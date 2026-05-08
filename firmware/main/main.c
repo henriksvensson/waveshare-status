@@ -50,6 +50,7 @@ static esp_lcd_panel_handle_t lcd_panel;
 static lv_obj_t *header_panel;
 static lv_obj_t *status_title_label;
 static lv_obj_t *status_state_label;
+static lv_obj_t *status_wifi_label;
 static lv_obj_t *status_ip_label;
 static lv_obj_t *status_users_label;
 static lv_obj_t *status_user_name_labels[USER_NAME_COUNT];
@@ -57,6 +58,7 @@ static lv_obj_t *status_freshness_label;
 
 typedef struct {
     char service[STATUS_TEXT_MAX];
+    char wifi[STATUS_TEXT_MAX];
     char ip[STATUS_TEXT_MAX];
     char user_names[USER_NAME_COUNT][STATUS_TEXT_MAX];
     int users;
@@ -68,6 +70,7 @@ typedef struct {
 
 static status_state_t status_state = {
     .service = "",
+    .wifi = "",
     .ip = "",
     .users = 0,
     .has_update = false,
@@ -239,6 +242,8 @@ static void update_status_screen(void)
                                     : lv_color_hex(COLOR_STALE),
                                 0);
 
+    lv_label_set_text(status_wifi_label, status_state.wifi[0] != '\0' ? status_state.wifi : "[WiFi unknown]");
+
     lv_label_set_text(status_ip_label, status_state.ip[0] != '\0' ? status_state.ip : "[IP unknown]");
 
     if (status_state.has_update) {
@@ -273,6 +278,7 @@ static void apply_status_json(const char *line)
     }
 
     copy_json_string(root, "service", status_state.service, sizeof(status_state.service));
+    copy_json_string(root, "wifi", status_state.wifi, sizeof(status_state.wifi));
     copy_json_string(root, "ip", status_state.ip, sizeof(status_state.ip));
     copy_mode(root);
     clear_user_names();
@@ -292,9 +298,10 @@ static void apply_status_json(const char *line)
     status_state.has_update = true;
     status_state.last_update_us = esp_timer_get_time();
     cJSON_Delete(root);
-    ESP_LOGI(TAG, "status update: service=%s mode=%s ip=%s users=%d",
+    ESP_LOGI(TAG, "status update: service=%s mode=%s wifi=%s ip=%s users=%d",
              status_state.service,
              status_state.client_mode ? "client" : "ap",
+             status_state.wifi,
              status_state.ip,
              status_state.users);
     update_status_screen();
@@ -368,23 +375,30 @@ static void create_status_screen(void)
     lv_obj_set_style_text_font(status_state_label, &lv_font_unscii_16, 0);
     lv_obj_align(status_state_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 46);
 
+    status_wifi_label = lv_label_create(screen);
+    lv_obj_set_style_text_color(status_wifi_label, lv_color_hex(COLOR_TEXT), 0);
+    lv_obj_set_style_text_font(status_wifi_label, &lv_font_unscii_16, 0);
+    lv_obj_set_width(status_wifi_label, LCD_H_RES - (2 * UI_LEFT_INSET));
+    lv_label_set_long_mode(status_wifi_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_align(status_wifi_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 74);
+
     status_ip_label = lv_label_create(screen);
     lv_obj_set_style_text_color(status_ip_label, lv_color_hex(COLOR_TEXT), 0);
     lv_obj_set_style_text_font(status_ip_label, &lv_font_unscii_16, 0);
     lv_obj_set_width(status_ip_label, LCD_H_RES - (2 * UI_LEFT_INSET));
     lv_label_set_long_mode(status_ip_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_align(status_ip_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 78);
+    lv_obj_align(status_ip_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 102);
 
     status_users_label = lv_label_create(screen);
     lv_obj_set_style_text_color(status_users_label, lv_color_hex(COLOR_TEXT), 0);
     lv_obj_set_style_text_font(status_users_label, &lv_font_unscii_16, 0);
-    lv_obj_align(status_users_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 110);
+    lv_obj_align(status_users_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 134);
 
     for (int i = 0; i < USER_NAME_COUNT; i++) {
         status_user_name_labels[i] = lv_label_create(screen);
         lv_obj_set_style_text_color(status_user_name_labels[i], lv_color_hex(COLOR_TEXT), 0);
         lv_obj_set_style_text_font(status_user_name_labels[i], &lv_font_unscii_8, 0);
-        lv_obj_align(status_user_name_labels[i], LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 142 + (i * 14));
+        lv_obj_align(status_user_name_labels[i], LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 166 + (i * 14));
     }
 
     status_freshness_label = lv_label_create(screen);

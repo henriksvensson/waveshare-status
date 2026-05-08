@@ -45,13 +45,13 @@ docker compose run --rm idf idf.py --no-hints -p /dev/ttyACM0 flash >/tmp/openco
 ## Serial Protocol
 
 - Device accepts one JSON object per line over USB serial.
-- Current fields: `service`, `mode`, `ip`, `users`, `user_names`.
+- Current fields: `service`, `mode`, `wifi`, `ip`, `users`, `user_names`.
 - `mode` is either `client` or `ap`; do not use the old `online` boolean.
 - `users` can be a count. `user_names` can list names to show, or `users` can be an array of names/objects.
 - Example:
 
 ```json
-{"service":"MURMUR","mode":"client","ip":"192.168.1.42","users":3,"user_names":["alice","bob","charlie"]}
+{"service":"MURMUR","mode":"client","wifi":"StatusNet","ip":"192.168.1.42","users":3,"user_names":["alice","bob","charlie"]}
 ```
 
 ## UI Notes
