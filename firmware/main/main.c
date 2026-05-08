@@ -2,12 +2,17 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "cJSON.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "esp_timer.h"
 #include "lvgl.h"
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "waveshare-status";
 
@@ -24,8 +29,37 @@ static const char *TAG = "waveshare-status";
 #define LCD_PIN_RST GPIO_NUM_8
 #define LCD_PIN_BL GPIO_NUM_15
 
+#define SERIAL_LINE_MAX 256
+#define STATUS_TEXT_MAX 64
+#define STATUS_STALE_US (30 * 1000 * 1000LL)
+
 static esp_lcd_panel_io_handle_t lcd_io;
 static esp_lcd_panel_handle_t lcd_panel;
+static lv_obj_t *status_title_label;
+static lv_obj_t *status_state_label;
+static lv_obj_t *status_host_label;
+static lv_obj_t *status_ip_label;
+static lv_obj_t *status_users_label;
+static lv_obj_t *status_freshness_label;
+
+typedef struct {
+    char service[STATUS_TEXT_MAX];
+    char host[STATUS_TEXT_MAX];
+    char ip[STATUS_TEXT_MAX];
+    int users;
+    int max_users;
+    bool online;
+    int64_t last_update_us;
+} status_state_t;
+
+static status_state_t status_state = {
+    .service = "MURMUR",
+    .host = "waiting",
+    .ip = "--",
+    .users = 0,
+    .max_users = 32,
+    .online = false,
+};
 
 static void init_lcd(void)
 {
@@ -103,6 +137,132 @@ static void init_lvgl(void)
     lvgl_port_add_disp(&display_config);
 }
 
+static void copy_json_string(cJSON *root, const char *name, char *dest, size_t dest_size)
+{
+    cJSON *value = cJSON_GetObjectItemCaseSensitive(root, name);
+    if (cJSON_IsString(value) && value->valuestring != NULL) {
+        strlcpy(dest, value->valuestring, dest_size);
+    }
+}
+
+static void update_status_screen(void)
+{
+    char text[STATUS_TEXT_MAX + 16];
+    const int64_t age_us = status_state.last_update_us == 0 ? -1 : esp_timer_get_time() - status_state.last_update_us;
+    const bool stale = age_us < 0 || age_us > STATUS_STALE_US;
+
+    lvgl_port_lock(0);
+
+    lv_label_set_text(status_title_label, status_state.service);
+    lv_label_set_text(status_state_label, status_state.online && !stale ? "ONLINE" : "OFFLINE");
+    lv_obj_set_style_text_color(status_state_label,
+                                status_state.online && !stale ? lv_color_hex(0x28d17c) : lv_color_hex(0xf97316),
+                                0);
+
+    snprintf(text, sizeof(text), "Host: %s", status_state.host);
+    lv_label_set_text(status_host_label, text);
+
+    snprintf(text, sizeof(text), "IP: %s", status_state.ip);
+    lv_label_set_text(status_ip_label, text);
+
+    snprintf(text, sizeof(text), "Users: %d / %d", status_state.users, status_state.max_users);
+    lv_label_set_text(status_users_label, text);
+
+    if (age_us < 0) {
+        lv_label_set_text(status_freshness_label, "Last update: never");
+    } else if (stale) {
+        snprintf(text, sizeof(text), "Stale: %llds ago", age_us / 1000000LL);
+        lv_label_set_text(status_freshness_label, text);
+    } else {
+        snprintf(text, sizeof(text), "Last update: %llds ago", age_us / 1000000LL);
+        lv_label_set_text(status_freshness_label, text);
+    }
+    lv_obj_set_style_text_color(status_freshness_label, stale ? lv_color_hex(0xfbbf24) : lv_color_hex(0x64748b), 0);
+
+    lvgl_port_unlock();
+}
+
+static void apply_status_json(const char *line)
+{
+    cJSON *root = cJSON_Parse(line);
+    if (root == NULL) {
+        ESP_LOGW(TAG, "ignoring invalid JSON status line");
+        return;
+    }
+
+    copy_json_string(root, "service", status_state.service, sizeof(status_state.service));
+    copy_json_string(root, "host", status_state.host, sizeof(status_state.host));
+    copy_json_string(root, "ip", status_state.ip, sizeof(status_state.ip));
+
+    cJSON *online = cJSON_GetObjectItemCaseSensitive(root, "online");
+    if (cJSON_IsBool(online)) {
+        status_state.online = cJSON_IsTrue(online);
+    }
+
+    cJSON *users = cJSON_GetObjectItemCaseSensitive(root, "users");
+    if (cJSON_IsNumber(users)) {
+        status_state.users = users->valueint;
+    }
+
+    cJSON *max_users = cJSON_GetObjectItemCaseSensitive(root, "max_users");
+    if (cJSON_IsNumber(max_users)) {
+        status_state.max_users = max_users->valueint;
+    }
+
+    status_state.last_update_us = esp_timer_get_time();
+    cJSON_Delete(root);
+    ESP_LOGI(TAG, "status update: service=%s online=%d host=%s ip=%s users=%d/%d",
+             status_state.service,
+             status_state.online,
+             status_state.host,
+             status_state.ip,
+             status_state.users,
+             status_state.max_users);
+    update_status_screen();
+}
+
+static void serial_status_task(void *arg)
+{
+    char line[SERIAL_LINE_MAX];
+    size_t len = 0;
+
+    while (true) {
+        int ch = getchar();
+        if (ch == EOF) {
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
+
+        if (ch == '\r') {
+            continue;
+        }
+
+        if (ch == '\n') {
+            line[len] = '\0';
+            if (len > 0) {
+                apply_status_json(line);
+            }
+            len = 0;
+            continue;
+        }
+
+        if (len < sizeof(line) - 1) {
+            line[len++] = (char)ch;
+        } else {
+            len = 0;
+            ESP_LOGW(TAG, "dropping oversized status line");
+        }
+    }
+}
+
+static void freshness_task(void *arg)
+{
+    while (true) {
+        update_status_screen();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 static void create_status_screen(void)
 {
     lvgl_port_lock(0);
@@ -111,31 +271,49 @@ static void create_status_screen(void)
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x05070d), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
-    lv_obj_t *title = lv_label_create(screen);
-    lv_label_set_text(title, "Waveshare Status");
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 24);
+    lv_obj_t *accent = lv_obj_create(screen);
+    lv_obj_remove_style_all(accent);
+    lv_obj_set_size(accent, 6, 280);
+    lv_obj_set_style_bg_color(accent, lv_color_hex(0x38bdf8), 0);
+    lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
+    lv_obj_align(accent, LV_ALIGN_LEFT_MID, 0, 0);
 
-    lv_obj_t *state = lv_label_create(screen);
-    lv_label_set_text(state, "USB Online");
-    lv_obj_set_style_text_color(state, lv_color_hex(0x28d17c), 0);
-    lv_obj_set_style_text_font(state, &lv_font_montserrat_14, 0);
-    lv_obj_align(state, LV_ALIGN_CENTER, 0, -34);
+    status_title_label = lv_label_create(screen);
+    lv_obj_set_style_text_color(status_title_label, lv_color_hex(0x94a3b8), 0);
+    lv_obj_set_style_text_font(status_title_label, &lv_font_montserrat_14, 0);
+    lv_obj_align(status_title_label, LV_ALIGN_TOP_LEFT, 20, 18);
 
-    lv_obj_t *message = lv_label_create(screen);
-    lv_label_set_text(message, "Waiting for host");
-    lv_obj_set_style_text_color(message, lv_color_hex(0xcbd5e1), 0);
-    lv_obj_set_style_text_font(message, &lv_font_montserrat_14, 0);
-    lv_obj_align(message, LV_ALIGN_CENTER, 0, 20);
+    status_state_label = lv_label_create(screen);
+    lv_obj_set_style_text_font(status_state_label, &lv_font_montserrat_28, 0);
+    lv_obj_align(status_state_label, LV_ALIGN_TOP_LEFT, 20, 42);
+
+    status_host_label = lv_label_create(screen);
+    lv_obj_set_style_text_color(status_host_label, lv_color_hex(0xe2e8f0), 0);
+    lv_obj_set_style_text_font(status_host_label, &lv_font_montserrat_16, 0);
+    lv_obj_align(status_host_label, LV_ALIGN_TOP_LEFT, 20, 88);
+
+    status_ip_label = lv_label_create(screen);
+    lv_obj_set_style_text_color(status_ip_label, lv_color_hex(0xcbd5e1), 0);
+    lv_obj_set_style_text_font(status_ip_label, &lv_font_montserrat_16, 0);
+    lv_obj_align(status_ip_label, LV_ALIGN_TOP_LEFT, 20, 118);
+
+    status_users_label = lv_label_create(screen);
+    lv_obj_set_style_text_color(status_users_label, lv_color_hex(0xcbd5e1), 0);
+    lv_obj_set_style_text_font(status_users_label, &lv_font_montserrat_16, 0);
+    lv_obj_align(status_users_label, LV_ALIGN_TOP_LEFT, 20, 148);
+
+    status_freshness_label = lv_label_create(screen);
+    lv_obj_set_style_text_font(status_freshness_label, &lv_font_montserrat_14, 0);
+    lv_obj_align(status_freshness_label, LV_ALIGN_TOP_LEFT, 20, 188);
 
     lv_obj_t *footer = lv_label_create(screen);
-    lv_label_set_text(footer, "LVGL display proof");
+    lv_label_set_text(footer, "USB serial status display");
     lv_obj_set_style_text_color(footer, lv_color_hex(0x64748b), 0);
     lv_obj_set_style_text_font(footer, &lv_font_montserrat_14, 0);
-    lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -24);
+    lv_obj_align(footer, LV_ALIGN_BOTTOM_LEFT, 20, -20);
 
     lvgl_port_unlock();
+    update_status_screen();
 }
 
 void app_main(void)
@@ -145,6 +323,8 @@ void app_main(void)
     init_lcd();
     init_lvgl();
     create_status_screen();
+    xTaskCreate(serial_status_task, "serial_status", 4096, NULL, 5, NULL);
+    xTaskCreate(freshness_task, "status_freshness", 4096, NULL, 3, NULL);
     ESP_LOGI(TAG, "LVGL status screen created");
 
     while (true) {
