@@ -57,6 +57,7 @@ docker compose run --rm idf idf.py --no-hints -p /dev/ttyACM0 flash >/tmp/openco
 - Use LVGL for layout and text rendering.
 - Design for a small `240x280` screen with rounded unavailable corners.
 - Favor large status text and fewer data rows over dense layouts.
+- `UNSCII_16` is the preferred readable font on this panel; it fits about 13-14 characters per safe-inset row depending on horizontal inset.
 - Current UI is a dark dashboard with service, online/offline state, host, IP, users, and freshness/stale state.
 
 ## Current Verification

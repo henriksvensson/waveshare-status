@@ -32,6 +32,7 @@ static const char *TAG = "waveshare-status";
 #define SERIAL_LINE_MAX 256
 #define STATUS_TEXT_MAX 64
 #define STATUS_STALE_US (30 * 1000 * 1000LL)
+#define UI_LEFT_INSET 14
 
 static esp_lcd_panel_io_handle_t lcd_io;
 static esp_lcd_panel_handle_t lcd_panel;
@@ -156,7 +157,7 @@ static void update_status_screen(void)
     lv_label_set_text(status_title_label, status_state.service);
     lv_label_set_text(status_state_label, status_state.online && !stale ? "ONLINE" : "OFFLINE");
     lv_obj_set_style_text_color(status_state_label,
-                                status_state.online && !stale ? lv_color_hex(0x28d17c) : lv_color_hex(0xf97316),
+                                status_state.online && !stale ? lv_color_hex(0x00ff66) : lv_color_hex(0xff7a00),
                                 0);
 
     snprintf(text, sizeof(text), "Host: %s", status_state.host);
@@ -177,7 +178,7 @@ static void update_status_screen(void)
         snprintf(text, sizeof(text), "Last update: %llds ago", age_us / 1000000LL);
         lv_label_set_text(status_freshness_label, text);
     }
-    lv_obj_set_style_text_color(status_freshness_label, stale ? lv_color_hex(0xfbbf24) : lv_color_hex(0x64748b), 0);
+    lv_obj_set_style_text_color(status_freshness_label, stale ? lv_color_hex(0xffd000) : lv_color_hex(0xb8c0cc), 0);
 
     lvgl_port_unlock();
 }
@@ -271,46 +272,39 @@ static void create_status_screen(void)
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x05070d), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
-    lv_obj_t *accent = lv_obj_create(screen);
-    lv_obj_remove_style_all(accent);
-    lv_obj_set_size(accent, 6, 280);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(0x38bdf8), 0);
-    lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
-    lv_obj_align(accent, LV_ALIGN_LEFT_MID, 0, 0);
-
     status_title_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(status_title_label, lv_color_hex(0x94a3b8), 0);
-    lv_obj_set_style_text_font(status_title_label, &lv_font_montserrat_14, 0);
-    lv_obj_align(status_title_label, LV_ALIGN_TOP_LEFT, 20, 18);
+    lv_obj_set_style_text_color(status_title_label, lv_color_hex(0xd8dee8), 0);
+    lv_obj_set_style_text_font(status_title_label, &lv_font_unscii_16, 0);
+    lv_obj_align(status_title_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 18);
 
     status_state_label = lv_label_create(screen);
-    lv_obj_set_style_text_font(status_state_label, &lv_font_montserrat_28, 0);
-    lv_obj_align(status_state_label, LV_ALIGN_TOP_LEFT, 20, 42);
+    lv_obj_set_style_text_font(status_state_label, &lv_font_unscii_16, 0);
+    lv_obj_align(status_state_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 50);
 
     status_host_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(status_host_label, lv_color_hex(0xe2e8f0), 0);
-    lv_obj_set_style_text_font(status_host_label, &lv_font_montserrat_16, 0);
-    lv_obj_align(status_host_label, LV_ALIGN_TOP_LEFT, 20, 88);
+    lv_obj_set_style_text_color(status_host_label, lv_color_white(), 0);
+    lv_obj_set_style_text_font(status_host_label, &lv_font_unscii_16, 0);
+    lv_obj_align(status_host_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 88);
 
     status_ip_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(status_ip_label, lv_color_hex(0xcbd5e1), 0);
-    lv_obj_set_style_text_font(status_ip_label, &lv_font_montserrat_16, 0);
-    lv_obj_align(status_ip_label, LV_ALIGN_TOP_LEFT, 20, 118);
+    lv_obj_set_style_text_color(status_ip_label, lv_color_white(), 0);
+    lv_obj_set_style_text_font(status_ip_label, &lv_font_unscii_16, 0);
+    lv_obj_align(status_ip_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 118);
 
     status_users_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(status_users_label, lv_color_hex(0xcbd5e1), 0);
-    lv_obj_set_style_text_font(status_users_label, &lv_font_montserrat_16, 0);
-    lv_obj_align(status_users_label, LV_ALIGN_TOP_LEFT, 20, 148);
+    lv_obj_set_style_text_color(status_users_label, lv_color_white(), 0);
+    lv_obj_set_style_text_font(status_users_label, &lv_font_unscii_16, 0);
+    lv_obj_align(status_users_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 148);
 
     status_freshness_label = lv_label_create(screen);
-    lv_obj_set_style_text_font(status_freshness_label, &lv_font_montserrat_14, 0);
-    lv_obj_align(status_freshness_label, LV_ALIGN_TOP_LEFT, 20, 188);
+    lv_obj_set_style_text_font(status_freshness_label, &lv_font_unscii_8, 0);
+    lv_obj_align(status_freshness_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 188);
 
     lv_obj_t *footer = lv_label_create(screen);
     lv_label_set_text(footer, "USB serial status display");
-    lv_obj_set_style_text_color(footer, lv_color_hex(0x64748b), 0);
-    lv_obj_set_style_text_font(footer, &lv_font_montserrat_14, 0);
-    lv_obj_align(footer, LV_ALIGN_BOTTOM_LEFT, 20, -20);
+    lv_obj_set_style_text_color(footer, lv_color_hex(0xb8c0cc), 0);
+    lv_obj_set_style_text_font(footer, &lv_font_unscii_8, 0);
+    lv_obj_align(footer, LV_ALIGN_BOTTOM_LEFT, UI_LEFT_INSET, -20);
 
     lvgl_port_unlock();
     update_status_screen();
