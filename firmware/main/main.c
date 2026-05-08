@@ -36,9 +36,10 @@ static const char *TAG = "waveshare-status";
 #define USER_NAME_COUNT 5
 
 #define COLOR_BG 0x071013
-#define COLOR_TEXT 0xf8fafc
+#define COLOR_TEXT 0xd4dde7
 #define COLOR_MUTED 0x94a3b8
 #define COLOR_TITLE 0xdff7f6
+#define COLOR_HEADER 0x0b2a2d
 #define COLOR_CLIENT 0x2dd4bf
 #define COLOR_AP 0xf59e0b
 #define COLOR_FRESHNESS 0xf59e0b
@@ -46,6 +47,7 @@ static const char *TAG = "waveshare-status";
 
 static esp_lcd_panel_io_handle_t lcd_io;
 static esp_lcd_panel_handle_t lcd_panel;
+static lv_obj_t *header_panel;
 static lv_obj_t *status_title_label;
 static lv_obj_t *status_state_label;
 static lv_obj_t *status_ip_label;
@@ -348,32 +350,41 @@ static void create_status_screen(void)
     lv_obj_set_style_bg_color(screen, lv_color_hex(COLOR_BG), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
+    header_panel = lv_obj_create(screen);
+    lv_obj_remove_style_all(header_panel);
+    lv_obj_set_size(header_panel, LCD_H_RES, 32);
+    lv_obj_set_style_bg_color(header_panel, lv_color_hex(COLOR_HEADER), 0);
+    lv_obj_set_style_bg_opa(header_panel, LV_OPA_COVER, 0);
+    lv_obj_align(header_panel, LV_ALIGN_TOP_MID, 0, 0);
+
     status_title_label = lv_label_create(screen);
     lv_obj_set_style_text_color(status_title_label, lv_color_hex(COLOR_TITLE), 0);
     lv_obj_set_style_text_font(status_title_label, &lv_font_unscii_16, 0);
     lv_obj_set_width(status_title_label, LCD_H_RES - (2 * UI_LEFT_INSET));
     lv_obj_set_style_text_align(status_title_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(status_title_label, LV_ALIGN_TOP_MID, 0, 18);
+    lv_obj_align(status_title_label, LV_ALIGN_TOP_MID, 0, 8);
 
     status_state_label = lv_label_create(screen);
     lv_obj_set_style_text_font(status_state_label, &lv_font_unscii_16, 0);
-    lv_obj_align(status_state_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 50);
+    lv_obj_align(status_state_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 46);
 
     status_ip_label = lv_label_create(screen);
     lv_obj_set_style_text_color(status_ip_label, lv_color_hex(COLOR_TEXT), 0);
     lv_obj_set_style_text_font(status_ip_label, &lv_font_unscii_16, 0);
-    lv_obj_align(status_ip_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 82);
+    lv_obj_set_width(status_ip_label, LCD_H_RES - (2 * UI_LEFT_INSET));
+    lv_label_set_long_mode(status_ip_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_align(status_ip_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 78);
 
     status_users_label = lv_label_create(screen);
     lv_obj_set_style_text_color(status_users_label, lv_color_hex(COLOR_TEXT), 0);
     lv_obj_set_style_text_font(status_users_label, &lv_font_unscii_16, 0);
-    lv_obj_align(status_users_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 114);
+    lv_obj_align(status_users_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 110);
 
     for (int i = 0; i < USER_NAME_COUNT; i++) {
         status_user_name_labels[i] = lv_label_create(screen);
         lv_obj_set_style_text_color(status_user_name_labels[i], lv_color_hex(COLOR_TEXT), 0);
         lv_obj_set_style_text_font(status_user_name_labels[i], &lv_font_unscii_8, 0);
-        lv_obj_align(status_user_name_labels[i], LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 146 + (i * 14));
+        lv_obj_align(status_user_name_labels[i], LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 142 + (i * 14));
     }
 
     status_freshness_label = lv_label_create(screen);
