@@ -1,0 +1,14 @@
+services:
+  idf:
+    image: espressif/idf:v5.3.2
+    working_dir: /project/firmware
+    volumes:
+      - .:/project
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    group_add:
+      - dialout
+    environment:
+      IDF_CCACHE_ENABLE: "1"
+    tty: true
+    stdin_open: true

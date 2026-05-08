@@ -1,0 +1,13 @@
+# ESP-IDF build output
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+
+# Python/editor noise
+__pycache__/
+.venv/
+.vscode/
+.idea/
+
+# OS noise
+.DS_Store
