@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "esp_timer.h"
+#include "iosevka_fonts.h"
 #include "lvgl.h"
 #include "images.h"
 #include <stdbool.h>
@@ -416,46 +417,46 @@ static void create_dashboard_screen(lv_obj_t *screen)
 
     header_panel = lv_obj_create(status_container);
     lv_obj_remove_style_all(header_panel);
-    lv_obj_set_size(header_panel, LCD_H_RES, 32);
+    lv_obj_set_size(header_panel, LCD_H_RES, 40);
     lv_obj_set_style_bg_color(header_panel, lv_color_hex(COLOR_HEADER), 0);
     lv_obj_set_style_bg_opa(header_panel, LV_OPA_COVER, 0);
     lv_obj_align(header_panel, LV_ALIGN_TOP_MID, 0, 0);
 
     status_title_label = lv_label_create(status_container);
     lv_obj_set_style_text_color(status_title_label, lv_color_hex(COLOR_TITLE), 0);
-    lv_obj_set_style_text_font(status_title_label, &lv_font_unscii_16, 0);
+    lv_obj_set_style_text_font(status_title_label, &iosevka_bold_24, 0);
     lv_obj_set_width(status_title_label, LCD_H_RES - (2 * UI_LEFT_INSET));
     lv_obj_set_style_text_align(status_title_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(status_title_label, LV_ALIGN_TOP_MID, 0, 8);
 
     status_state_label = lv_label_create(status_container);
-    lv_obj_set_style_text_font(status_state_label, &lv_font_unscii_16, 0);
-    lv_obj_align(status_state_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 46);
+    lv_obj_set_style_text_font(status_state_label, &iosevka_regular_20, 0);
+    lv_obj_align(status_state_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 50);
 
     status_wifi_label = lv_label_create(status_container);
     lv_obj_set_style_text_color(status_wifi_label, lv_color_hex(COLOR_TEXT), 0);
-    lv_obj_set_style_text_font(status_wifi_label, &lv_font_unscii_16, 0);
+    lv_obj_set_style_text_font(status_wifi_label, &iosevka_regular_20, 0);
     lv_obj_set_width(status_wifi_label, LCD_H_RES - (2 * UI_LEFT_INSET));
     lv_label_set_long_mode(status_wifi_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_align(status_wifi_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 74);
+    lv_obj_align(status_wifi_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 76);
 
     status_ip_label = lv_label_create(status_container);
     lv_obj_set_style_text_color(status_ip_label, lv_color_hex(COLOR_TEXT), 0);
-    lv_obj_set_style_text_font(status_ip_label, &lv_font_unscii_16, 0);
+    lv_obj_set_style_text_font(status_ip_label, &iosevka_regular_20, 0);
     lv_obj_set_width(status_ip_label, LCD_H_RES - (2 * UI_LEFT_INSET));
     lv_label_set_long_mode(status_ip_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_align(status_ip_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 102);
 
     status_users_label = lv_label_create(status_container);
     lv_obj_set_style_text_color(status_users_label, lv_color_hex(COLOR_TEXT), 0);
-    lv_obj_set_style_text_font(status_users_label, &lv_font_unscii_16, 0);
-    lv_obj_align(status_users_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 134);
+    lv_obj_set_style_text_font(status_users_label, &iosevka_regular_20, 0);
+    lv_obj_align(status_users_label, LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 136);
 
     for (int i = 0; i < USER_NAME_COUNT; i++) {
         status_user_name_labels[i] = lv_label_create(status_container);
         lv_obj_set_style_text_color(status_user_name_labels[i], lv_color_hex(COLOR_TEXT), 0);
-        lv_obj_set_style_text_font(status_user_name_labels[i], &lv_font_unscii_8, 0);
-        lv_obj_align(status_user_name_labels[i], LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 166 + (i * 14));
+        lv_obj_set_style_text_font(status_user_name_labels[i], &iosevka_regular_16, 0);
+        lv_obj_align(status_user_name_labels[i], LV_ALIGN_TOP_LEFT, UI_LEFT_INSET, 164 + (i * 18));
     }
 
     status_freshness_label = lv_label_create(status_container);

@@ -6,6 +6,9 @@ firmware/sdkconfig.old
 # Host build output
 host/waveshare-status-send/waveshare-status-send
 
+# Downloaded source font packages; generated LVGL fonts are committed instead.
+firmware/assets/PkgTTC-*/
+
 # Python/editor noise
 __pycache__/
 .venv/

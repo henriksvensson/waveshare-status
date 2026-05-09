@@ -51,6 +51,54 @@ firmware/   ESP-IDF firmware
 host/       Host-side status sender and OpenRC service files
 ```
 
+## Firmware Assets
+
+The firmware commits converted LVGL-ready assets, including RGB565 images and generated Iosevka font sources. Original Iosevka font packages are not committed; download them from the Iosevka releases page when regenerating fonts:
+
+https://github.com/be5invis/Iosevka/releases
+
+Current dashboard font choices:
+
+- header: Iosevka Bold `24px`
+- primary status rows: Iosevka Regular `20px`
+- user names: Iosevka Regular `16px`
+- stale warning: LVGL UNSCII `8px`
+
+Regenerate Iosevka LVGL fonts from downloaded TTC packages with `fontTools` and `lv_font_conv`. `lv_font_conv` cannot read TTC collections directly, so extract the first face to a temporary TTF before conversion:
+
+```bash
+python3 -m pip install --target /tmp/opencode/fonttools fonttools
+
+PYTHONPATH=/tmp/opencode/fonttools python3 - <<'PY'
+from fontTools.ttLib import TTCollection
+
+fonts = [
+    ("firmware/assets/PkgTTC-SGr-Iosevka-34.5.0/SGr-Iosevka-Regular.ttc", "/tmp/opencode/iosevka-regular.ttf"),
+    ("firmware/assets/PkgTTC-SGr-Iosevka-34.5.0/SGr-Iosevka-Bold.ttc", "/tmp/opencode/iosevka-bold.ttf"),
+]
+
+for source, target in fonts:
+    TTCollection(source).fonts[0].save(target)
+PY
+
+npx --yes lv_font_conv --no-compress --no-prefilter --bpp 4 --size 16 \
+  --font /tmp/opencode/iosevka-regular.ttf -r 0x20-0x7E --format lvgl \
+  --lv-include lvgl.h --lv-font-name iosevka_regular_16 \
+  -o firmware/main/fonts/iosevka_regular_16.c --force-fast-kern-format
+
+npx --yes lv_font_conv --no-compress --no-prefilter --bpp 4 --size 20 \
+  --font /tmp/opencode/iosevka-regular.ttf -r 0x20-0x7E --format lvgl \
+  --lv-include lvgl.h --lv-font-name iosevka_regular_20 \
+  -o firmware/main/fonts/iosevka_regular_20.c --force-fast-kern-format
+
+npx --yes lv_font_conv --no-compress --no-prefilter --bpp 4 --size 24 \
+  --font /tmp/opencode/iosevka-bold.ttf -r 0x20-0x7E --format lvgl \
+  --lv-include lvgl.h --lv-font-name iosevka_bold_24 \
+  -o firmware/main/fonts/iosevka_bold_24.c --force-fast-kern-format
+```
+
+Only generated `firmware/main/fonts/*.c` files are committed. Downloaded `firmware/assets/PkgTTC-*` source packages are ignored by git.
+
 ## Host Sender On Alpine/OpenRC
 
 The `host/` directory contains a supervised Alpine/OpenRC sender for the mini-pc. It writes the current Kismet/Murmur status to the attached display every few seconds and keeps a lightweight Mumble client connected so user count/name changes can update the display quickly.
