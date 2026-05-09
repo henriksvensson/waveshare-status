@@ -16,6 +16,34 @@ The board currently appears as `/dev/ttyACM0`.
 docker compose run --rm idf idf.py -p /dev/ttyACM0 flash monitor
 ```
 
+## Send Status Over Serial
+
+The firmware accepts one JSON object per line on `/dev/ttyACM0`. After flashing, sending status does not require Docker if your user has serial-device permissions.
+
+On Linux, add your user to `dialout` if direct writes fail with `Permission denied`:
+
+```bash
+sudo usermod -aG dialout "$USER"
+```
+
+Log out and back in, or reboot, then verify `dialout` appears in:
+
+```bash
+groups
+```
+
+Send a status line directly:
+
+```bash
+printf '%s\n' '{"service":"MURMUR","mode":"client","wifi":"StatusNet","ip":"192.168.1.42","users":3,"user_names":["alice","bob","charlie"]}' > /dev/ttyACM0
+```
+
+For repeated sends, a JSON Lines file also works:
+
+```bash
+cat status.jsonl > /dev/ttyACM0
+```
+
 ## Project Layout
 
 ```text
