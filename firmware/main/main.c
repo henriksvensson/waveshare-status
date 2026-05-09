@@ -10,6 +10,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_timer.h"
 #include "lvgl.h"
+#include "startup_image.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -40,8 +41,6 @@ static const char *TAG = "waveshare-status";
 #define COLOR_MUTED 0x94a3b8
 #define COLOR_TITLE 0xdff7f6
 #define COLOR_HEADER 0x0b2a2d
-#define COLOR_PANEL 0x0b171b
-#define COLOR_ACCENT 0x22d3ee
 #define COLOR_CLIENT 0x2dd4bf
 #define COLOR_AP 0xf59e0b
 #define COLOR_FRESHNESS 0xf59e0b
@@ -396,44 +395,9 @@ static void create_startup_screen(lv_obj_t *screen)
     lv_obj_set_style_bg_opa(startup_container, LV_OPA_COVER, 0);
     lv_obj_align(startup_container, LV_ALIGN_CENTER, 0, 0);
 
-    lv_obj_t *startup_panel = lv_obj_create(startup_container);
-    lv_obj_remove_style_all(startup_panel);
-    lv_obj_set_size(startup_panel, LCD_H_RES - 36, 158);
-    lv_obj_set_style_bg_color(startup_panel, lv_color_hex(COLOR_PANEL), 0);
-    lv_obj_set_style_bg_opa(startup_panel, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(startup_panel, 2, 0);
-    lv_obj_set_style_border_color(startup_panel, lv_color_hex(COLOR_ACCENT), 0);
-    lv_obj_align(startup_panel, LV_ALIGN_CENTER, 0, -4);
-
-    lv_obj_t *startup_mark = lv_label_create(startup_container);
-    lv_obj_set_style_text_color(startup_mark, lv_color_hex(COLOR_AP), 0);
-    lv_obj_set_style_text_font(startup_mark, &lv_font_unscii_16, 0);
-    lv_label_set_text(startup_mark, "((o))");
-    lv_obj_align(startup_mark, LV_ALIGN_CENTER, 0, -58);
-
-    lv_obj_t *startup_title = lv_label_create(startup_container);
-    lv_obj_set_style_text_color(startup_title, lv_color_hex(COLOR_TITLE), 0);
-    lv_obj_set_style_text_font(startup_title, &lv_font_unscii_16, 0);
-    lv_label_set_text(startup_title, "KISMET");
-    lv_obj_align(startup_title, LV_ALIGN_CENTER, 0, -24);
-
-    lv_obj_t *startup_subtitle = lv_label_create(startup_container);
-    lv_obj_set_style_text_color(startup_subtitle, lv_color_hex(COLOR_ACCENT), 0);
-    lv_obj_set_style_text_font(startup_subtitle, &lv_font_unscii_16, 0);
-    lv_label_set_text(startup_subtitle, "STATUS NODE");
-    lv_obj_align(startup_subtitle, LV_ALIGN_CENTER, 0, 4);
-
-    lv_obj_t *startup_wait = lv_label_create(startup_container);
-    lv_obj_set_style_text_color(startup_wait, lv_color_hex(COLOR_MUTED), 0);
-    lv_obj_set_style_text_font(startup_wait, &lv_font_unscii_8, 0);
-    lv_label_set_text(startup_wait, "waiting for serial JSONL");
-    lv_obj_align(startup_wait, LV_ALIGN_CENTER, 0, 48);
-
-    lv_obj_t *startup_footer = lv_label_create(startup_container);
-    lv_obj_set_style_text_color(startup_footer, lv_color_hex(COLOR_MUTED), 0);
-    lv_obj_set_style_text_font(startup_footer, &lv_font_unscii_8, 0);
-    lv_label_set_text(startup_footer, "USB LINK: STANDBY");
-    lv_obj_align(startup_footer, LV_ALIGN_BOTTOM_MID, 0, -18);
+    lv_obj_t *startup_img = lv_img_create(startup_container);
+    lv_img_set_src(startup_img, &startup_image);
+    lv_obj_align(startup_img, LV_ALIGN_CENTER, 0, 0);
 }
 
 static void create_dashboard_screen(lv_obj_t *screen)
