@@ -10,7 +10,7 @@
 #include "esp_lvgl_port.h"
 #include "esp_timer.h"
 #include "lvgl.h"
-#include "startup_image.h"
+#include "images.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>

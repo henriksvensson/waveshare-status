@@ -1,4 +1,4 @@
-#include "startup_image.h"
+#include "images.h"
 
 #define STARTUP_IMAGE_WIDTH 240
 #define STARTUP_IMAGE_HEIGHT 280
