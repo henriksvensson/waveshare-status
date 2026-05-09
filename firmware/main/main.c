@@ -410,6 +410,10 @@ static void create_dashboard_screen(lv_obj_t *screen)
     lv_obj_align(status_container, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(status_container, LV_OBJ_FLAG_HIDDEN);
 
+    lv_obj_t *background_img = lv_img_create(status_container);
+    lv_img_set_src(background_img, &background_image);
+    lv_obj_align(background_img, LV_ALIGN_CENTER, 0, 0);
+
     header_panel = lv_obj_create(status_container);
     lv_obj_remove_style_all(header_panel);
     lv_obj_set_size(header_panel, LCD_H_RES, 32);
