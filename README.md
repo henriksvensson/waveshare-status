@@ -160,6 +160,8 @@ The firmware logs a startup line and a periodic heartbeat over the ESP32-S3 USB 
 
 A possible next step is to generalize the serial protocol into a small semantic dashboard API. Instead of only rendering one Murmur-specific status payload, the firmware could accept updates for multiple service cards such as Murmur, SSH, web, or backups.
 
+Another Murmur-specific idea is to show who is currently talking in voice chat. The host sender could detect active voice packets or speaking state from its Mumble protocol connection and include a `speaking` or `active_speaker` field in status updates. The display could then highlight that user name or show a short `Speaking: alice` line.
+
 Each service update would be an upsert-style JSON object with bounded semantic fields, for example:
 
 ```json
