@@ -3,6 +3,9 @@ firmware/build/
 firmware/sdkconfig
 firmware/sdkconfig.old
 
+# Host build output
+host/mumble-status-poc/mumble-status-poc
+
 # Python/editor noise
 __pycache__/
 .venv/
