@@ -1,0 +1,110 @@
+#!/bin/sh
+set -u
+
+PORT=${PORT:-}
+INTERVAL=${INTERVAL:-2}
+WLAN_IFACE=${WLAN_IFACE:-wlan0}
+HOSTAPD_CONF=${HOSTAPD_CONF:-/etc/hostapd/kismet-ap.conf}
+LOG=${LOG:-/var/log/waveshare-status.log}
+
+log() {
+        message="$*"
+        printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$message" >> "$LOG" 2>/dev/null || true
+        logger -t waveshare-status "$message" 2>/dev/null || true
+}
+
+json_escape() {
+        printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+find_port() {
+        if [ -n "$PORT" ] && [ -c "$PORT" ]; then
+                printf '%s\n' "$PORT"
+                return 0
+        fi
+
+        for path in /dev/serial/by-id/*Espressif* /dev/serial/by-id/*JTAG* /dev/serial/by-id/*serial*; do
+                if [ -e "$path" ]; then
+                        readlink -f "$path"
+                        return 0
+                fi
+        done
+
+        if [ -c /dev/ttyACM0 ]; then
+                printf '%s\n' /dev/ttyACM0
+                return 0
+        fi
+
+        return 1
+}
+
+wifi_mode() {
+        if rc-service hostapd status >/dev/null 2>&1; then
+                printf '%s\n' ap
+        else
+                printf '%s\n' client
+        fi
+}
+
+ap_ssid() {
+        awk -F= '/^ssid=/ { print $2; exit }' "$HOSTAPD_CONF" 2>/dev/null
+}
+
+client_ssid() {
+        iw dev "$WLAN_IFACE" link 2>/dev/null | awk -F': ' '/SSID:/ { print $2; exit }'
+}
+
+wifi_name() {
+        mode="$1"
+        if [ "$mode" = ap ]; then
+                ssid=$(ap_ssid)
+        else
+                ssid=$(client_ssid)
+        fi
+
+        if [ -n "$ssid" ]; then
+                printf '%s\n' "$ssid"
+        elif [ "$mode" = ap ]; then
+                printf '%s\n' Kismet
+        fi
+}
+
+wifi_ip() {
+        mode="$1"
+        addr=$(ip -4 -o addr show dev "$WLAN_IFACE" scope global 2>/dev/null | awk '{ split($4, a, "/"); print a[1]; exit }')
+        if [ -n "$addr" ]; then
+                printf '%s\n' "$addr"
+        elif [ "$mode" = ap ]; then
+                printf '%s\n' 192.168.50.1
+        fi
+}
+
+send_status_once() {
+        port=$(find_port) || {
+                log "serial port not found; retrying"
+                return 1
+        }
+
+        mode=$(wifi_mode)
+        wifi=$(wifi_name "$mode")
+        ip_addr=$(wifi_ip "$mode")
+        service=MURMUR
+
+        stty -F "$port" 115200 raw -echo 2>/dev/null || true
+        printf '{"service":"%s","mode":"%s","wifi":"%s","ip":"%s","users":0,"user_names":[]}\n' \
+                "$(json_escape "$service")" \
+                "$(json_escape "$mode")" \
+                "$(json_escape "$wifi")" \
+                "$(json_escape "$ip_addr")" > "$port"
+}
+
+if [ "${1:-}" = "--once" ]; then
+        send_status_once
+        exit $?
+fi
+
+log "starting status sender"
+while true; do
+        send_status_once || true
+        sleep "$INTERVAL"
+done

@@ -1,0 +1,15 @@
+#!/sbin/openrc-run
+
+name="Waveshare status sender"
+description="Send Kismet/Murmur status to the attached Waveshare display"
+
+command="/usr/local/bin/waveshare-status-send"
+command_background=true
+supervisor="supervise-daemon"
+respawn_delay=2
+respawn_max=0
+
+depend() {
+        need localmount
+        after networking hostapd dnsmasq wpa_supplicant umurmur
+}
