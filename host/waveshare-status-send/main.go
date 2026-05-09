@@ -42,6 +42,21 @@ type mumbleState struct {
 	users      map[uint32]string
 }
 
+type mumbleConn struct {
+	conn    *tls.Conn
+	writeMu sync.Mutex
+}
+
+type protoField struct {
+	num   int
+	wire  int
+	value []byte
+}
+
+type protoCursor struct {
+	data []byte
+}
+
 type displayStatus struct {
 	Service   string   `json:"service"`
 	Mode      string   `json:"mode"`
@@ -216,57 +231,112 @@ func (s *mumbleState) snapshot() (int, []string) {
 	return len(names), names
 }
 
+func (s *mumbleState) clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ownSession = 0
+	s.users = map[uint32]string{}
+}
+
+func (s *mumbleState) setOwnSession(session uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ownSession = session
+}
+
+func (s *mumbleState) setUser(session uint32, name string) {
+	if session == 0 || name == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.users[session] = name
+}
+
+func (s *mumbleState) removeUser(session uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.users, session)
+}
+
 func mumbleLoop(cfg config, state *mumbleState, updates chan<- struct{}) {
 	for {
 		if err := watchMumble(cfg, state, updates); err != nil {
 			log.Printf("mumble watch: %v", err)
+			state.clear()
+			notify(updates)
 		}
 		time.Sleep(2 * time.Second)
 	}
 }
 
 func watchMumble(cfg config, state *mumbleState, updates chan<- struct{}) error {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", cfg.mumbleAddr, &tls.Config{InsecureSkipVerify: true})
+	client, err := connectMumble(cfg)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer client.conn.Close()
 
-	if err := writeMessage(conn, msgVersion, encodeVersion()); err != nil {
-		return err
-	}
-	if err := writeMessage(conn, msgAuthenticate, encodeAuthenticate(cfg.mumbleName)); err != nil {
-		return err
-	}
+	done := make(chan struct{})
+	defer close(done)
+	go client.sendPings(done)
 
 	for {
-		msgType, payload, err := readMessage(conn)
+		msgType, payload, err := readMessage(client.conn)
 		if err != nil {
 			return err
 		}
-		switch msgType {
-		case msgPing:
-			_ = writeMessage(conn, msgPing, payload)
-		case msgServerSync:
-			state.mu.Lock()
-			state.ownSession = parseFieldUint32(payload, 1)
-			state.mu.Unlock()
-			notify(updates)
-		case msgUserState:
-			session := parseFieldUint32(payload, 1)
-			name := parseFieldString(payload, 3)
-			if session != 0 && name != "" {
-				state.mu.Lock()
-				state.users[session] = name
-				state.mu.Unlock()
-				notify(updates)
+		if err := client.handleMessage(msgType, payload, state, updates); err != nil {
+			return err
+		}
+	}
+}
+
+func connectMumble(cfg config) (*mumbleConn, error) {
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", cfg.mumbleAddr, &tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		return nil, err
+	}
+	client := &mumbleConn{conn: conn}
+	if err := client.writeMessage(msgVersion, encodeVersion()); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if err := client.writeMessage(msgAuthenticate, encodeAuthenticate(cfg.mumbleName)); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
+func (c *mumbleConn) handleMessage(msgType uint16, payload []byte, state *mumbleState, updates chan<- struct{}) error {
+	switch msgType {
+	case msgPing:
+		return c.writeMessage(msgPing, payload)
+	case msgServerSync:
+		state.setOwnSession(parseFieldUint32(payload, 1))
+		notify(updates)
+	case msgUserState:
+		state.setUser(parseFieldUint32(payload, 1), parseFieldString(payload, 3))
+		notify(updates)
+	case msgUserRemove:
+		state.removeUser(parseFieldUint32(payload, 1))
+		notify(updates)
+	}
+	return nil
+}
+
+func (c *mumbleConn) sendPings(done <-chan struct{}) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			if err := c.writeMessage(msgPing, encodePing()); err != nil {
+				return
 			}
-		case msgUserRemove:
-			session := parseFieldUint32(payload, 1)
-			state.mu.Lock()
-			delete(state.users, session)
-			state.mu.Unlock()
-			notify(updates)
 		}
 	}
 }
@@ -276,6 +346,12 @@ func notify(updates chan<- struct{}) {
 	case updates <- struct{}{}:
 	default:
 	}
+}
+
+func (c *mumbleConn) writeMessage(msgType uint16, payload []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return writeMessage(c.conn, msgType, payload)
 }
 
 func writeMessage(w io.Writer, msgType uint16, payload []byte) error {
@@ -319,6 +395,12 @@ func encodeAuthenticate(username string) []byte {
 	return out
 }
 
+func encodePing() []byte {
+	var out []byte
+	out = appendVarintField(out, 1, uint64(time.Now().UnixMilli()))
+	return out
+}
+
 func appendStringField(out []byte, field int, value string) []byte {
 	out = appendVarint(out, uint64(field<<3|2))
 	out = appendVarint(out, uint64(len(value)))
@@ -340,9 +422,9 @@ func appendVarint(out []byte, value uint64) []byte {
 
 func parseFieldUint32(payload []byte, field int) uint32 {
 	var found uint32
-	parseFields(payload, func(num int, wire int, value []byte) {
-		if num == field && wire == 0 {
-			v, _ := readVarint(value)
+	forEachProtoField(payload, func(item protoField) {
+		if item.num == field && item.wire == 0 {
+			v, _ := readVarint(item.value)
 			found = uint32(v)
 		}
 	})
@@ -351,58 +433,78 @@ func parseFieldUint32(payload []byte, field int) uint32 {
 
 func parseFieldString(payload []byte, field int) string {
 	var found string
-	parseFields(payload, func(num int, wire int, value []byte) {
-		if num == field && wire == 2 {
-			found = string(value)
+	forEachProtoField(payload, func(item protoField) {
+		if item.num == field && item.wire == 2 {
+			found = string(item.value)
 		}
 	})
 	return found
 }
 
-func parseFields(payload []byte, each func(num int, wire int, value []byte)) {
-	for len(payload) > 0 {
-		tag, n := readVarint(payload)
-		if n <= 0 {
+func forEachProtoField(payload []byte, each func(protoField)) {
+	cursor := protoCursor{data: payload}
+	for {
+		field, ok := cursor.next()
+		if !ok {
 			return
 		}
-		payload = payload[n:]
-		num := int(tag >> 3)
-		wire := int(tag & 0x07)
-		switch wire {
-		case 0:
-			_, n = readVarint(payload)
-			if n <= 0 || n > len(payload) {
-				return
-			}
-			each(num, wire, payload[:n])
-			payload = payload[n:]
-		case 1:
-			if len(payload) < 8 {
-				return
-			}
-			each(num, wire, payload[:8])
-			payload = payload[8:]
-		case 2:
-			length, n := readVarint(payload)
-			if n <= 0 {
-				return
-			}
-			payload = payload[n:]
-			if length > uint64(len(payload)) {
-				return
-			}
-			each(num, wire, payload[:length])
-			payload = payload[length:]
-		case 5:
-			if len(payload) < 4 {
-				return
-			}
-			each(num, wire, payload[:4])
-			payload = payload[4:]
-		default:
-			return
-		}
+		each(field)
 	}
+}
+
+func (c *protoCursor) next() (protoField, bool) {
+	tag, ok := c.takeVarint()
+	if !ok {
+		return protoField{}, false
+	}
+	wire := int(tag & 0x07)
+	value, ok := c.takeValue(wire)
+	return protoField{num: int(tag >> 3), wire: wire, value: value}, ok
+}
+
+func (c *protoCursor) takeValue(wire int) ([]byte, bool) {
+	switch wire {
+	case 0:
+		return c.takeVarintBytes()
+	case 1:
+		return c.takeFixed(8)
+	case 2:
+		length, ok := c.takeVarint()
+		if !ok || length > uint64(len(c.data)) {
+			return nil, false
+		}
+		return c.takeFixed(int(length))
+	case 5:
+		return c.takeFixed(4)
+	default:
+		return nil, false
+	}
+}
+
+func (c *protoCursor) takeVarint() (uint64, bool) {
+	value, size := readVarint(c.data)
+	if size <= 0 {
+		return 0, false
+	}
+	c.data = c.data[size:]
+	return value, true
+}
+
+func (c *protoCursor) takeVarintBytes() ([]byte, bool) {
+	_, size := readVarint(c.data)
+	if size <= 0 || size > len(c.data) {
+		return nil, false
+	}
+	return c.takeFixed(size)
+}
+
+func (c *protoCursor) takeFixed(size int) ([]byte, bool) {
+	if size < 0 || len(c.data) < size {
+		return nil, false
+	}
+	value := c.data[:size]
+	c.data = c.data[size:]
+	return value, true
 }
 
 func readVarint(data []byte) (uint64, int) {
