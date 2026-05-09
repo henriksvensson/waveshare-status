@@ -48,8 +48,43 @@ cat status.jsonl > /dev/ttyACM0
 
 ```text
 firmware/   ESP-IDF firmware
-host/       Host-side status sender scripts, added later
+host/       Host-side status sender and OpenRC service files
 ```
+
+## Host Sender On Alpine/OpenRC
+
+The `host/` directory contains a supervised Alpine/OpenRC sender for the mini-pc. It writes the current Kismet/Murmur status to the attached display every few seconds.
+
+Install on the target host:
+
+```bash
+doas install -m 0755 host/waveshare-status-send /usr/local/bin/waveshare-status-send
+doas install -m 0755 host/waveshare-status.openrc /etc/init.d/waveshare-status
+doas rc-update add waveshare-status default
+doas rc-service waveshare-status start
+```
+
+Check status:
+
+```bash
+rc-service waveshare-status status
+```
+
+The sender detects:
+
+- serial port: `/dev/serial/by-id/*Espressif*`, `/dev/serial/by-id/*JTAG*`, `/dev/serial/by-id/*serial*`, then `/dev/ttyACM0`
+- AP/client mode: `rc-service hostapd status`
+- AP SSID: `/etc/hostapd/kismet-ap.conf`
+- client SSID: `iw dev wlan0 link`
+- IP address: `ip -4 -o addr show dev wlan0`
+
+Run a single update manually:
+
+```bash
+doas /usr/local/bin/waveshare-status-send --once
+```
+
+The first version sends `users: 0` and an empty `user_names` list. Real uMurmur user detection can be added later.
 
 ## Current Milestone
 
