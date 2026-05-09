@@ -226,58 +226,81 @@ static void copy_user_names(cJSON *users, bool update_count)
     }
 }
 
-static void update_status_screen(void)
+static void show_startup_screen(void)
+{
+    lv_obj_clear_flag(startup_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(status_container, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void show_status_screen(void)
+{
+    lv_obj_add_flag(startup_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(status_container, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void update_mode_label(void)
+{
+    if (status_state.mode_known) {
+        lv_label_set_text(status_state_label, status_state.client_mode ? "Client Mode" : "AP Mode");
+        lv_obj_set_style_text_color(status_state_label,
+                                    status_state.client_mode ? lv_color_hex(COLOR_CLIENT) : lv_color_hex(COLOR_AP),
+                                    0);
+        return;
+    }
+
+    lv_label_set_text(status_state_label, "[mode unknown]");
+    lv_obj_set_style_text_color(status_state_label, lv_color_hex(COLOR_STALE), 0);
+}
+
+static void update_users_label(void)
 {
     char text[STATUS_TEXT_MAX + 16];
-    const int64_t age_us = status_state.last_update_us == 0 ? -1 : esp_timer_get_time() - status_state.last_update_us;
+    snprintf(text, sizeof(text), "Users: %d", status_state.users);
+    lv_label_set_text(status_users_label, text);
+}
+
+static void update_user_name_labels(void)
+{
+    for (int i = 0; i < USER_NAME_COUNT; i++) {
+        lv_label_set_text(status_user_name_labels[i], status_state.user_names[i]);
+    }
+}
+
+static void update_freshness_label(int64_t age_us)
+{
+    char text[STATUS_TEXT_MAX + 16];
     const bool stale = age_us < 0 || age_us > STATUS_STALE_US;
+
+    if (!stale) {
+        lv_label_set_text(status_freshness_label, "");
+        return;
+    }
+
+    snprintf(text, sizeof(text), "[!] Stale: %llds ago", age_us / 1000000LL);
+    lv_label_set_text(status_freshness_label, text);
+}
+
+static void update_status_screen(void)
+{
+    const int64_t age_us = esp_timer_get_time() - status_state.last_update_us;
 
     lvgl_port_lock(0);
 
     if (!status_state.has_update) {
-        lv_obj_clear_flag(startup_container, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(status_container, LV_OBJ_FLAG_HIDDEN);
+        show_startup_screen();
         lv_refr_now(NULL);
         lvgl_port_unlock();
         return;
     }
 
-    lv_obj_add_flag(startup_container, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(status_container, LV_OBJ_FLAG_HIDDEN);
-
+    show_status_screen();
     lv_label_set_text(status_title_label, status_state.service[0] != '\0' ? status_state.service : "[service]");
-    if (status_state.has_update && status_state.mode_known) {
-        lv_label_set_text(status_state_label, status_state.client_mode ? "Client Mode" : "AP Mode");
-    } else {
-        lv_label_set_text(status_state_label, "[mode unknown]");
-    }
-    lv_obj_set_style_text_color(status_state_label,
-                                status_state.has_update && status_state.mode_known
-                                    ? (status_state.client_mode ? lv_color_hex(COLOR_CLIENT) : lv_color_hex(COLOR_AP))
-                                    : lv_color_hex(COLOR_STALE),
-                                0);
-
+    update_mode_label();
     lv_label_set_text(status_wifi_label, status_state.wifi[0] != '\0' ? status_state.wifi : "[WiFi unknown]");
-
     lv_label_set_text(status_ip_label, status_state.ip[0] != '\0' ? status_state.ip : "[IP unknown]");
-
-    if (status_state.has_update) {
-        snprintf(text, sizeof(text), "Users: %d", status_state.users);
-    } else {
-        snprintf(text, sizeof(text), "Users: [?]");
-    }
-    lv_label_set_text(status_users_label, text);
-
-    for (int i = 0; i < USER_NAME_COUNT; i++) {
-        lv_label_set_text(status_user_name_labels[i], status_state.user_names[i]);
-    }
-
-    if (age_us < 0 || !stale) {
-        lv_label_set_text(status_freshness_label, "");
-    } else {
-        snprintf(text, sizeof(text), "[!] Stale: %llds ago", age_us / 1000000LL);
-        lv_label_set_text(status_freshness_label, text);
-    }
+    update_users_label();
+    update_user_name_labels();
+    update_freshness_label(age_us);
     lv_obj_set_style_text_color(status_freshness_label, lv_color_hex(COLOR_STALE), 0);
     lv_refr_now(NULL);
 
@@ -364,14 +387,8 @@ static void freshness_task(void *arg)
     }
 }
 
-static void create_status_screen(void)
+static void create_startup_screen(lv_obj_t *screen)
 {
-    lvgl_port_lock(0);
-
-    lv_obj_t *screen = lv_scr_act();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(COLOR_BG), 0);
-    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
-
     startup_container = lv_obj_create(screen);
     lv_obj_remove_style_all(startup_container);
     lv_obj_set_size(startup_container, LCD_H_RES, LCD_V_RES);
@@ -417,7 +434,10 @@ static void create_status_screen(void)
     lv_obj_set_style_text_font(startup_footer, &lv_font_unscii_8, 0);
     lv_label_set_text(startup_footer, "USB LINK: STANDBY");
     lv_obj_align(startup_footer, LV_ALIGN_BOTTOM_MID, 0, -18);
+}
 
+static void create_dashboard_screen(lv_obj_t *screen)
+{
     status_container = lv_obj_create(screen);
     lv_obj_remove_style_all(status_container);
     lv_obj_set_size(status_container, LCD_H_RES, LCD_V_RES);
@@ -475,6 +495,18 @@ static void create_status_screen(void)
     lv_obj_set_width(status_freshness_label, LCD_H_RES - (2 * UI_LEFT_INSET));
     lv_obj_set_style_text_align(status_freshness_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(status_freshness_label, LV_ALIGN_BOTTOM_MID, 0, -14);
+}
+
+static void create_status_screen(void)
+{
+    lvgl_port_lock(0);
+
+    lv_obj_t *screen = lv_scr_act();
+    lv_obj_set_style_bg_color(screen, lv_color_hex(COLOR_BG), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+
+    create_startup_screen(screen);
+    create_dashboard_screen(screen);
 
     lvgl_port_unlock();
     update_status_screen();
