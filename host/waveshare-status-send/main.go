@@ -11,10 +11,12 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -34,6 +36,7 @@ type config struct {
 	hostapdConf string
 	mumbleAddr  string
 	mumbleName  string
+	pidFile     string
 }
 
 type mumbleState struct {
@@ -74,6 +77,7 @@ func main() {
 	flag.StringVar(&cfg.hostapdConf, "hostapd-conf", env("HOSTAPD_CONF", "/etc/hostapd/kismet-ap.conf"), "hostapd AP config")
 	flag.StringVar(&cfg.mumbleAddr, "mumble", env("MUMBLE_ADDR", "127.0.0.1:64738"), "Mumble server address")
 	flag.StringVar(&cfg.mumbleName, "mumble-name", env("MUMBLE_NAME", "status-display"), "temporary Mumble client name")
+	flag.StringVar(&cfg.pidFile, "pid-file", env("PID_FILE", "/run/waveshare-status.pid"), "pidfile for refresh signalling")
 	once := flag.Bool("once", false, "send one update and exit")
 	flag.Parse()
 
@@ -88,9 +92,17 @@ func main() {
 		}
 		return
 	}
+	if err := writePIDFile(cfg.pidFile); err != nil {
+		log.Printf("write pidfile: %v", err)
+	} else {
+		defer os.Remove(cfg.pidFile)
+	}
 
 	ticker := time.NewTicker(cfg.interval)
 	defer ticker.Stop()
+	refresh := make(chan os.Signal, 1)
+	signal.Notify(refresh, syscall.SIGUSR1)
+	defer signal.Stop(refresh)
 
 	log.Printf("starting status sender: port=%q wlan=%s mumble=%s", cfg.port, cfg.wlanIface, cfg.mumbleAddr)
 	for {
@@ -101,8 +113,16 @@ func main() {
 		select {
 		case <-ticker.C:
 		case <-updates:
+		case <-refresh:
 		}
 	}
+}
+
+func writePIDFile(path string) error {
+	if path == "" {
+		return nil
+	}
+	return os.WriteFile(path, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0644)
 }
 
 func sendStatus(cfg config, state *mumbleState) error {
