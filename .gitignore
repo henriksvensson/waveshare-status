@@ -5,6 +5,7 @@ firmware/sdkconfig.old
 
 # Host build output
 host/mumble-status-poc/mumble-status-poc
+host/waveshare-status-send/waveshare-status-send
 
 # Python/editor noise
 __pycache__/

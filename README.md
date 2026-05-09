@@ -53,12 +53,19 @@ host/       Host-side status sender and OpenRC service files
 
 ## Host Sender On Alpine/OpenRC
 
-The `host/` directory contains a supervised Alpine/OpenRC sender for the mini-pc. It writes the current Kismet/Murmur status to the attached display every few seconds.
+The `host/` directory contains a supervised Alpine/OpenRC sender for the mini-pc. It writes the current Kismet/Murmur status to the attached display every few seconds and keeps a lightweight Mumble client connected so user count/name changes can update the display quickly.
+
+Build the sender locally using Docker:
+
+```bash
+docker run --rm -v "$PWD/host/waveshare-status-send:/src" -w /src golang:1.22-alpine \
+  sh -c 'gofmt -w main.go && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o waveshare-status-send .'
+```
 
 Install on the target host:
 
 ```bash
-doas install -m 0755 host/waveshare-status-send /usr/local/bin/waveshare-status-send
+doas install -m 0755 host/waveshare-status-send/waveshare-status-send /usr/local/bin/waveshare-status-send
 doas install -m 0755 host/waveshare-status.openrc /etc/init.d/waveshare-status
 doas rc-update add waveshare-status default
 doas rc-service waveshare-status start
@@ -77,14 +84,13 @@ The sender detects:
 - AP SSID: `/etc/hostapd/kismet-ap.conf`
 - client SSID: `iw dev wlan0 link`
 - IP address: `ip -4 -o addr show dev wlan0`
+- Mumble users: a minimal TLS Mumble client connected to `127.0.0.1:64738`
 
 Run a single update manually:
 
 ```bash
-doas /usr/local/bin/waveshare-status-send --once
+doas /usr/local/bin/waveshare-status-send -once
 ```
-
-The first version sends `users: 0` and an empty `user_names` list. Real uMurmur user detection can be added later.
 
 ## Current Milestone
 
