@@ -1,0 +1,3 @@
+#!/bin/sh
+# Tiny ACPI entrypoint. Detach immediately; acpid may clean up child processes when handler exits.
+exec setsid /usr/local/sbin/kismet-power-button-action </dev/null >/dev/null 2>&1 &

@@ -1,0 +1,65 @@
+#!/bin/sh
+set -eu
+
+HOSTAPD_CONF=/etc/hostapd/kismet-ap.conf
+AP_ADDR=192.168.50.1/24
+LOG=/var/log/kismet-wifi.log
+STATUS_PID_FILE=${STATUS_PID_FILE:-/run/waveshare-status.pid}
+
+log() {
+        printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"
+        logger -t kismet-wifi "$*"
+}
+
+refresh_status_display() {
+        pid=$(cat "$STATUS_PID_FILE" 2>/dev/null || true)
+        case "$pid" in
+                ''|*[!0-9]*) return 0 ;;
+        esac
+        kill -USR1 "$pid" 2>/dev/null || true
+}
+
+if grep -q "CHANGE-ME-KISMET-BOAT" "$HOSTAPD_CONF"; then
+        echo "Refusing to start AP mode: change wpa_passphrase in $HOSTAPD_CONF first." >&2
+        exit 1
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+        echo "Run as root, for example: doas $0" >&2
+        exit 1
+fi
+
+log "Switching wlan0 to AP mode"
+echo "Switching wlan0 to Kismet AP mode. Current SSH-over-Wi-Fi session may disconnect."
+
+rc-service dnsmasq stop >> "$LOG" 2>&1 || true
+rc-service hostapd stop >> "$LOG" 2>&1 || true
+ifdown wlan0 >> "$LOG" 2>&1 || true
+rc-service wpa_supplicant stop >> "$LOG" 2>&1 || true
+
+# Give wpa_supplicant/OpenRC a moment to release the radio before hostapd takes it.
+i=0
+while pgrep wpa_supplicant >/dev/null 2>&1 && [ "$i" -lt 20 ]; do
+        i=$((i + 1))
+        sleep 0.25
+done
+if pgrep wpa_supplicant >/dev/null 2>&1; then
+        log "wpa_supplicant still running after stop; killing it"
+        killall wpa_supplicant >> "$LOG" 2>&1 || true
+        sleep 0.5
+fi
+
+ip addr flush dev wlan0 >> "$LOG" 2>&1 || true
+ip addr add "$AP_ADDR" dev wlan0 >> "$LOG" 2>&1
+ip link set wlan0 up >> "$LOG" 2>&1
+
+if ! rc-service hostapd start >> "$LOG" 2>&1; then
+        log "hostapd failed to start; leaving dnsmasq stopped"
+        rc-service dnsmasq stop >> "$LOG" 2>&1 || true
+        exit 1
+fi
+
+rc-service dnsmasq start >> "$LOG" 2>&1
+refresh_status_display
+log "AP mode active: SSID Kismet, server IP 192.168.50.1, Mumble port 64738"
+echo "AP mode active: SSID Kismet, server IP 192.168.50.1, Mumble port 64738."

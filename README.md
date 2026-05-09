@@ -71,6 +71,18 @@ doas rc-update add waveshare-status default
 doas rc-service waveshare-status start
 ```
 
+Install the Kismet power-button and Wi-Fi mode scripts:
+
+```bash
+doas install -m 0755 host/kismet/kismet-power-button /usr/local/sbin/kismet-power-button
+doas install -m 0755 host/kismet/kismet-power-button-action /usr/local/sbin/kismet-power-button-action
+doas install -m 0755 host/kismet/kismet-wifi-ap /usr/local/sbin/kismet-wifi-ap
+doas install -m 0755 host/kismet/kismet-wifi-client /usr/local/sbin/kismet-wifi-client
+doas install -m 0755 host/kismet/acpi-PWRF-00000080 /etc/acpi/PWRF/00000080
+```
+
+The AP/client scripts signal the running sender with `SIGUSR1` after mode changes so the display updates without starting a second Mumble client.
+
 Check status:
 
 ```bash

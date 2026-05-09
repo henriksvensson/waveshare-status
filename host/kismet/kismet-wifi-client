@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+
+LOG=/var/log/kismet-wifi.log
+STATUS_PID_FILE=${STATUS_PID_FILE:-/run/waveshare-status.pid}
+
+log() {
+        printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"
+        logger -t kismet-wifi "$*"
+}
+
+refresh_status_display() {
+        pid=$(cat "$STATUS_PID_FILE" 2>/dev/null || true)
+        case "$pid" in
+                ''|*[!0-9]*) return 0 ;;
+        esac
+        kill -USR1 "$pid" 2>/dev/null || true
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+        echo "Run as root, for example: doas $0" >&2
+        exit 1
+fi
+
+log "Switching wlan0 to Wi-Fi client mode"
+echo "Switching wlan0 to Wi-Fi client mode. Current SSH session may disconnect."
+
+rc-service dnsmasq stop >> "$LOG" 2>&1 || true
+rc-service hostapd stop >> "$LOG" 2>&1 || true
+
+ip addr flush dev wlan0 >> "$LOG" 2>&1 || true
+ip link set wlan0 up >> "$LOG" 2>&1 || true
+
+rc-service wpa_supplicant start >> "$LOG" 2>&1 || true
+sleep 1
+ifup wlan0 >> "$LOG" 2>&1 || rc-service networking restart >> "$LOG" 2>&1 || true
+
+refresh_status_display
+log "Client mode requested"
+echo "Client mode requested. Check IP with: ip -br addr show wlan0"

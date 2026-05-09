@@ -1,0 +1,100 @@
+#!/bin/sh
+set -eu
+
+# Runs detached from acpid so slow network transitions and delayed shutdown survive handler exit.
+# Tuned for this mini-PC's duplicate ACPI power-button events.
+WINDOW_SECONDS=2
+DEBOUNCE_CS=2
+POST_DOUBLE_COOLDOWN_CS=100
+STATE_DIR=/run/kismet-power-button
+LOG=/var/log/kismet-power-button.log
+PENDING_FILE=$STATE_DIR/pending-single.token
+LAST_EVENT_FILE=$STATE_DIR/last-event.cs
+COOLDOWN_UNTIL_FILE=$STATE_DIR/cooldown-until.cs
+LOCK_DIR=$STATE_DIR/lock
+
+log() {
+        msg="$*"
+        printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$msg" >> "$LOG"
+        logger -t kismet-button "$msg"
+}
+
+now_cs() {
+        awk '{ printf "%d\n", $1 * 100 }' /proc/uptime
+}
+
+lock() {
+        i=0
+        while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+                i=$((i + 1))
+                if [ "$i" -ge 20 ]; then
+                        log "lock-timeout"
+                        exit 1
+                fi
+                sleep 0.1
+        done
+}
+
+unlock() {
+        rmdir "$LOCK_DIR" 2>/dev/null || true
+}
+
+start_pending_single() {
+        now="$1"
+        token="$$-$(date +%s)-$now"
+        echo "$token" > "$PENDING_FILE"
+        log "event=first-press uptime_cs=$now action=pending-shutdown window_s=$WINDOW_SECONDS"
+        sleep "$WINDOW_SECONDS"
+        if [ -f "$PENDING_FILE" ] && [ "$(cat "$PENDING_FILE" 2>/dev/null || true)" = "$token" ]; then
+                rm -f "$PENDING_FILE"
+                log "event=single-press uptime_cs=$(now_cs) action=shutdown"
+                /sbin/poweroff
+        fi
+}
+
+cancel_pending_single() {
+        rm -f "$PENDING_FILE"
+}
+
+toggle_wifi_mode() {
+        if rc-service hostapd status >/dev/null 2>&1; then
+                log "event=double-press action=switch-client"
+                /usr/local/sbin/kismet-wifi-client </dev/null >/dev/null 2>&1
+        else
+                log "event=double-press action=switch-ap"
+                /usr/local/sbin/kismet-wifi-ap </dev/null >/dev/null 2>&1
+        fi
+}
+
+mkdir -p "$STATE_DIR"
+touch "$LOG"
+lock
+
+now=$(now_cs)
+
+cooldown_until=$(cat "$COOLDOWN_UNTIL_FILE" 2>/dev/null || echo 0)
+if [ "$now" -lt "$cooldown_until" ]; then
+        unlock
+        log "event=ignored-cooldown uptime_cs=$now cooldown_until_cs=$cooldown_until"
+        exit 0
+fi
+
+last=$(cat "$LAST_EVENT_FILE" 2>/dev/null || echo 0)
+delta=$((now - last))
+echo "$now" > "$LAST_EVENT_FILE"
+
+if [ "$delta" -ge 0 ] && [ "$delta" -lt "$DEBOUNCE_CS" ]; then
+        unlock
+        log "event=ignored-debounce uptime_cs=$now delta_cs=$delta debounce_cs=$DEBOUNCE_CS"
+        exit 0
+fi
+
+if [ -f "$PENDING_FILE" ]; then
+        cancel_pending_single
+        echo $((now + POST_DOUBLE_COOLDOWN_CS)) > "$COOLDOWN_UNTIL_FILE"
+        unlock
+        toggle_wifi_mode
+else
+        unlock
+        start_pending_single "$now"
+fi
