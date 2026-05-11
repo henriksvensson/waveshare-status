@@ -162,6 +162,8 @@ A possible next step is to generalize the serial protocol into a small semantic 
 
 Another Murmur-specific idea is to show who is currently talking in voice chat. The host sender could detect active voice packets or speaking state from its Mumble protocol connection and include a `speaking` or `active_speaker` field in status updates. The display could then highlight that user name or show a short `Speaking: alice` line.
 
+The ESP32 display board has three physical buttons that could be used for local interaction. If the firmware grows into multiple dashboard cards, buttons could switch cards manually, pause/resume rotation, or acknowledge stale/error states. One button could also send a host command over USB serial to toggle AP/client Wi-Fi mode, which would let us remove the flaky double-press power-button handling on the mini-pc.
+
 Each service update would be an upsert-style JSON object with bounded semantic fields, for example:
 
 ```json
